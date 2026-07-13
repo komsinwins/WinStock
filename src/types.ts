@@ -29,6 +29,7 @@ export interface StockInItem {
   currentQty: number;  // จำนวนคงเหลือปัจจุบัน
   createdAt: string;   // วันที่นำเข้า
   details?: string;    // รายละเอียดสินค้า
+  invoiceNumber?: string; // หมายเลขใบกำกับสินค้า / Invoice
 }
 
 export interface StockOutItem {

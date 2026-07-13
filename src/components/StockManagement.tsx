@@ -74,6 +74,7 @@ export default function StockManagement() {
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [serialsText, setSerialsText] = useState(''); // Textarea with line-separated or comma-separated serials
+  const [invoiceNumber, setInvoiceNumber] = useState('');
 
   // 3. Stock Out Form State
   const [customer, setCustomer] = useState('');
@@ -353,7 +354,8 @@ export default function StockManagement() {
       initialQty: finalQty,
       currentQty: finalQty,
       createdAt: new Date().toISOString(),
-      details: details.trim()
+      details: details.trim(),
+      invoiceNumber: invoiceNumber.trim()
     };
 
     try {
@@ -371,6 +373,7 @@ export default function StockManagement() {
       setPrice('');
       setQuantity('1');
       setSerialsText('');
+      setInvoiceNumber('');
       alert('บันทึกการนำเข้าสินค้าสำเร็จ');
       setActiveTab('remaining');
     } catch (err) {
@@ -478,8 +481,9 @@ export default function StockManagement() {
     const matchesType = item.type.toLowerCase().includes(searchLower);
     const matchesDetails = item.details ? item.details.toLowerCase().includes(searchLower) : false;
     const matchesSerial = item.serials && item.serials.some(sn => sn.toLowerCase().includes(searchLower));
+    const matchesInvoice = item.invoiceNumber ? item.invoiceNumber.toLowerCase().includes(searchLower) : false;
 
-    return (matchesSku || matchesName || matchesBrand || matchesModel || matchesType || matchesDetails || matchesSerial) && item.currentQty > 0;
+    return (matchesSku || matchesName || matchesBrand || matchesModel || matchesType || matchesDetails || matchesSerial || matchesInvoice) && item.currentQty > 0;
   });
 
   // Filters for Dispatched History (ประวัติสินค้าออก)
@@ -786,6 +790,11 @@ export default function StockManagement() {
                                 {item.details}
                               </span>
                             )}
+                            {item.invoiceNumber && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xxs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100" title={`Invoice: ${item.invoiceNumber}`}>
+                                🧾 {item.invoiceNumber}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="py-4 px-6 text-sm">
@@ -912,6 +921,17 @@ export default function StockManagement() {
                         <option key={t.id} value={t.name}>{t.name}</option>
                       ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเลข Invoice / ใบกำกับภาษี</label>
+                  <input
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    placeholder="เช่น INV-2026-0001"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
                 </div>
 
                 <div>
@@ -1064,7 +1084,14 @@ export default function StockManagement() {
                             <td className="py-3.5 px-6 font-mono text-xs font-bold text-slate-700">{item.sku}</td>
                             <td className="py-3.5 px-6 text-sm">
                               <span className="font-medium text-slate-800">{item.name}</span>
-                              <div className="text-xxs text-slate-400 mt-0.5">{item.brand} / {item.model}</div>
+                              <div className="text-xxs text-slate-400 mt-0.5 flex flex-wrap gap-1.5 items-center">
+                                <span>{item.brand} / {item.model}</span>
+                                {item.invoiceNumber && (
+                                  <span className="px-1 py-0.2 bg-emerald-50 text-emerald-700 font-semibold rounded border border-emerald-100">
+                                    🧾 {item.invoiceNumber}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3.5 px-6 text-sm font-semibold text-slate-700">
                               {formatBaht(item.price * item.initialQty)}
