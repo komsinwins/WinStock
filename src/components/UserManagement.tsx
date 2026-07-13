@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from '../firebase';
 import { Shield, ShieldAlert, User, Key, UserCheck, Trash2, X, Plus, Users, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -33,6 +33,7 @@ export default function UserManagement({ onClose }: UserManagementProps) {
         userList.push({
           id: doc.id,
           username: data.username,
+          password: data.password,
           name: data.name,
           role: data.role as 'admin' | 'viewer'
         });
@@ -117,6 +118,40 @@ export default function UserManagement({ onClose }: UserManagementProps) {
     } catch (err) {
       console.error(err);
       handleFirestoreError(err, OperationType.DELETE, 'users');
+    }
+  };
+
+  const handleToggleRole = async (userToUpdate: UserAccount) => {
+    if (userToUpdate.username === 'admin') {
+      alert('ไม่สามารถเปลี่ยนสิทธิ์ผู้ดูแลระบบหลักได้');
+      return;
+    }
+
+    const savedUserStr = localStorage.getItem('winstock_user');
+    const currentUser = savedUserStr ? JSON.parse(savedUserStr) : null;
+    if (currentUser && currentUser.username === userToUpdate.username) {
+      alert('ไม่สามารถเปลี่ยนระดับสิทธิ์ของบัญชีที่คุณกำลังใช้งานอยู่ในขณะนี้ได้');
+      return;
+    }
+
+    const newRole = userToUpdate.role === 'admin' ? 'viewer' : 'admin';
+    const confirmMessage = `คุณต้องการเปลี่ยนระดับสิทธิ์ของ "${userToUpdate.name}" เป็น ${newRole === 'admin' ? 'ผู้ดูแลระบบ (Admin)' : 'ผู้เข้าชมทั่วไป (Viewer)'} ใช่หรือไม่?`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'users', userToUpdate.id), {
+        username: userToUpdate.username,
+        password: userToUpdate.password || 'password123',
+        name: userToUpdate.name,
+        role: newRole
+      });
+      alert('เปลี่ยนสิทธิ์เรียบร้อยแล้ว');
+    } catch (err) {
+      console.error(err);
+      alert('เกิดข้อผิดพลาดในการเปลี่ยนระดับสิทธิ์ผู้ใช้');
     }
   };
 
@@ -279,13 +314,26 @@ export default function UserManagement({ onClose }: UserManagementProps) {
                     <div>
                       <div className="flex items-center space-x-2">
                         <span className="font-extrabold text-slate-800 text-sm">{u.name}</span>
-                        <span className={`px-2 py-0.5 rounded text-xxs font-bold ${
-                          u.role === 'admin' 
-                            ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' 
-                            : 'bg-slate-100 text-slate-700 border border-slate-200'
-                        }`}>
-                          {u.role === 'admin' ? 'ADMIN' : 'VIEWER'}
-                        </span>
+                        {u.username === 'admin' ? (
+                          <span className="px-2 py-0.5 rounded text-xxs font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                            ADMIN (หลัก)
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRole(u)}
+                            className={`px-2.5 py-0.5 rounded-full text-xxs font-bold transition-all flex items-center space-x-1 border shadow-2xs ${
+                              u.role === 'admin' 
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:scale-105' 
+                                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 hover:scale-105'
+                            }`}
+                            title="คลิกเพื่อเปลี่ยนระดับสิทธิ์"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse mr-1"></span>
+                            <span>{u.role === 'admin' ? 'ADMIN' : 'VIEWER'}</span>
+                            <span className="text-[9px] font-normal text-slate-400 ml-1">(เปลี่ยนสิทธิ์)</span>
+                          </button>
+                        )}
                       </div>
                       <span className="text-xs text-slate-400 font-mono">ID: {u.username}</span>
                     </div>

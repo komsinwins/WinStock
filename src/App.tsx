@@ -29,15 +29,15 @@ interface UserRole {
 
 export default function App() {
   const [currentMenu, setCurrentMenu] = useState<'dashboard' | 'stock' | 'demo' | 'material' | 'asset'>('dashboard');
-  const [user, setUser] = useState<UserRole | null>(() => {
-    const saved = localStorage.getItem('winstock_user');
-    return saved ? JSON.parse(saved) : null;
+  const [user, setUser] = useState<UserRole | null>({
+    username: 'admin',
+    name: 'ผู้ดูแลระบบ (Admin)',
+    role: 'admin'
   });
   const [isUserMgmtOpen, setIsUserMgmtOpen] = useState(false);
 
   const handleLogout = () => {
-    localStorage.removeItem('winstock_user');
-    setUser(null);
+    // No-op as login is disabled
   };
 
   if (!user) {
@@ -96,15 +96,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
-              {/* Logout Button */}
-              <button
-                onClick={handleLogout}
-                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-                title="ออกจากระบบ"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </div>
