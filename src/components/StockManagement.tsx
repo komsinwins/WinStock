@@ -41,7 +41,7 @@ import BarcodeScanner from './BarcodeScanner';
 export default function StockManagement() {
   const savedUser = localStorage.getItem('winstock_user');
   const loggedInUser = savedUser ? JSON.parse(savedUser) : null;
-  const isAdmin = loggedInUser?.role === 'admin';
+  const isAdmin = true; // เปิดใช้งานสิทธิ์เต็มรูปแบบทุกฟังก์ชัน
 
   // Real-time Firestore States
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);

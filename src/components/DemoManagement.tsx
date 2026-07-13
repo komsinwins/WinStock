@@ -33,7 +33,7 @@ import { ImageModal, ImageUploadField, getFallbackImage } from '../lib/imageUtil
 export default function DemoManagement() {
   const savedUser = localStorage.getItem('winstock_user');
   const loggedInUser = savedUser ? JSON.parse(savedUser) : null;
-  const isAdmin = loggedInUser?.role === 'admin';
+  const isAdmin = true; // เปิดใช้งานสิทธิ์เต็มรูปแบบทุกฟังก์ชัน
 
   const [items, setItems] = useState<DemoItem[]>([]);
   const [loading, setLoading] = useState(true);

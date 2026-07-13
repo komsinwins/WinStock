@@ -34,7 +34,7 @@ import { ImageModal, ImageUploadField, getFallbackImage } from '../lib/imageUtil
 export default function MaterialManagement() {
   const savedUser = localStorage.getItem('winstock_user');
   const loggedInUser = savedUser ? JSON.parse(savedUser) : null;
-  const isAdmin = loggedInUser?.role === 'admin';
+  const isAdmin = true; // เปิดใช้งานสิทธิ์เต็มรูปแบบทุกฟังก์ชัน
 
   const [items, setItems] = useState<MaterialItem[]>([]);
   const [loading, setLoading] = useState(true);
