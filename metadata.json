@@ -1,0 +1,6 @@
+{
+  "name": "WinStock V1.0 ระบบจัดการบัญชีสินค้าและอุปกรณ์",
+  "description": "โปรแกรมบริหารจัดการสินค้าและอุปกรณ์สำหรับสต็อคสินค้า, บัญชีสินค้าเข้า, บัญชีสินค้าออก, บัญชีสินค้า DEMO, บัญชีวัสดุงานติดตั้ง และบัญชีทรัพย์สินบริษัท ค้นหาข้อมูล ออกรายงาน Excel และ PDF ได้ทันที",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

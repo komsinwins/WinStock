@@ -1,0 +1,190 @@
+{
+  "entities": {
+    "ProductCategory": {
+      "title": "ProductCategory",
+      "description": "Product category",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 }
+      },
+      "required": ["name"]
+    },
+    "ProductType": {
+      "title": "ProductType",
+      "description": "Product type categories within categories",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "categoryId": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["name"]
+    },
+    "Distributor": {
+      "title": "Distributor",
+      "description": "Distributors of items",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 }
+      },
+      "required": ["name"]
+    },
+    "StockInItem": {
+      "title": "StockInItem",
+      "description": "Main stock in entries",
+      "type": "object",
+      "properties": {
+        "sku": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "type": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "brand": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "serials": { "type": "array" },
+        "warranty": { "type": "string", "maxLength": 100 },
+        "distributor": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "price": { "type": "number" },
+        "initialQty": { "type": "number" },
+        "currentQty": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "details": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["sku", "type", "name", "brand", "model", "serials", "warranty", "distributor", "price", "initialQty", "currentQty", "createdAt"]
+    },
+    "StockOutItem": {
+      "title": "StockOutItem",
+      "description": "Dispatched items history",
+      "type": "object",
+      "properties": {
+        "customer": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "poNumber": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "sku": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "brand": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "quantity": { "type": "number" },
+        "selectedSerials": { "type": "array" },
+        "price": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customer", "poNumber", "sku", "name", "brand", "model", "quantity", "selectedSerials", "price", "createdAt"]
+    },
+    "DemoItem": {
+      "title": "DemoItem",
+      "description": "Prerecorded or user added items for demo",
+      "type": "object",
+      "properties": {
+        "sku": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "brand": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "serial": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "status": { "type": "string", "enum": ["available", "borrowed", "damaged", "lost"] },
+        "borrower": { "type": "string", "maxLength": 200 },
+        "borrowDate": { "type": "string" },
+        "expectedReturnDate": { "type": "string" },
+        "actualReturnDate": { "type": "string" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["sku", "name", "brand", "model", "serial", "status", "createdAt"]
+    },
+    "MaterialItem": {
+      "title": "MaterialItem",
+      "description": "Installation materials stock",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "unit": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "quantity": { "type": "number" },
+        "minQuantity": { "type": "number" },
+        "price": { "type": "number" },
+        "location": { "type": "string", "maxLength": 200 },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["code", "name", "category", "unit", "quantity", "minQuantity", "price", "location", "lastUpdated"]
+    },
+    "AssetItem": {
+      "title": "AssetItem",
+      "description": "Company asset tracking",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "serial": { "type": "string", "maxLength": 100 },
+        "value": { "type": "number" },
+        "location": { "type": "string", "maxLength": 200 },
+        "custodian": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "purchaseDate": { "type": "string" },
+        "warrantyExp": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["active", "inactive", "repair", "retired"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["code", "name", "category", "serial", "value", "location", "custodian", "purchaseDate", "warrantyExp", "status", "createdAt"]
+    },
+    "EquipmentLocation": {
+      "title": "EquipmentLocation",
+      "description": "Equipment storage location",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 }
+      },
+      "required": ["name"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "User login account with permissions",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "minLength": 3, "maxLength": 50 },
+        "password": { "type": "string", "minLength": 4, "maxLength": 50 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "role": { "type": "string", "enum": ["admin", "viewer"] }
+      },
+      "required": ["username", "password", "name", "role"]
+    }
+  },
+  "firestore": {
+    "categories/{categoryId}": {
+      "schema": "ProductCategory",
+      "description": "Product category choices"
+    },
+    "productTypes/{typeId}": {
+      "schema": "ProductType",
+      "description": "Product type options"
+    },
+    "distributors/{distId}": {
+      "schema": "Distributor",
+      "description": "List of distributors"
+    },
+    "stockIn/{itemId}": {
+      "schema": "StockInItem",
+      "description": "Incoming main inventory lots"
+    },
+    "stockOut/{itemId}": {
+      "schema": "StockOutItem",
+      "description": "Outgoing main inventory dispatch records"
+    },
+    "demoItems/{itemId}": {
+      "schema": "DemoItem",
+      "description": "List of items for demonstrations and trials"
+    },
+    "materials/{itemId}": {
+      "schema": "MaterialItem",
+      "description": "Installation materials stock levels"
+    },
+    "assets/{itemId}": {
+      "schema": "AssetItem",
+      "description": "Company fixed assets list"
+    },
+    "equipmentLocations/{locationId}": {
+      "schema": "EquipmentLocation",
+      "description": "Equipment storage locations"
+    },
+    "users/{userId}": {
+      "schema": "UserAccount",
+      "description": "User login credentials and roles"
+    }
+  }
+}

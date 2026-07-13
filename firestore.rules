@@ -1,0 +1,198 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Functions
+    function isValidUserAccount(data) {
+      return data.username is string && data.username.size() >= 3 && data.username.size() <= 50 &&
+             data.password is string && data.password.size() >= 4 && data.password.size() <= 50 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+             data.role is string && (data.role == 'admin' || data.role == 'viewer');
+    }
+
+    function isValidEquipmentLocation(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100;
+    }
+
+    function isValidCategory(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100;
+    }
+
+    function isValidProductType(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() <= 100));
+    }
+
+    function isValidDistributor(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100;
+    }
+
+    function isValidStockInItem(data) {
+      return data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100
+        && data.type is string && data.type.size() > 0 && data.type.size() <= 100
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.brand is string && data.brand.size() > 0 && data.brand.size() <= 100
+        && data.model is string && data.model.size() > 0 && data.model.size() <= 100
+        && data.serials is list && data.serials.size() <= 1000
+        && data.warranty is string && data.warranty.size() <= 100
+        && data.distributor is string && data.distributor.size() > 0 && data.distributor.size() <= 100
+        && data.price is number
+        && data.initialQty is int
+        && data.currentQty is int
+        && data.createdAt is string
+        && (!('details' in data) || data.details is string);
+    }
+
+    function isValidStockOutItem(data) {
+      return data.customer is string && data.customer.size() > 0 && data.customer.size() <= 200
+        && data.poNumber is string && data.poNumber.size() > 0 && data.poNumber.size() <= 100
+        && data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.brand is string && data.brand.size() > 0 && data.brand.size() <= 100
+        && data.model is string && data.model.size() > 0 && data.model.size() <= 100
+        && data.quantity is int
+        && data.selectedSerials is list && data.selectedSerials.size() <= 1000
+        && data.price is number
+        && data.createdAt is string;
+    }
+
+    function isValidDemoItem(data) {
+      return data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.brand is string && data.brand.size() > 0 && data.brand.size() <= 100
+        && data.model is string && data.model.size() > 0 && data.model.size() <= 100
+        && data.serial is string && data.serial.size() > 0 && data.serial.size() <= 100
+        && data.status is string && (data.status == "available" || data.status == "borrowed" || data.status == "damaged" || data.status == "lost")
+        && (!('borrower' in data) || data.borrower == null || (data.borrower is string && data.borrower.size() <= 200))
+        && (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 1000))
+        && data.createdAt is string;
+    }
+
+    // materials entity
+    function isValidMaterialItem(data) {
+      return data.code is string && data.code.size() > 0 && data.code.size() <= 100
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.category is string && data.category.size() > 0 && data.category.size() <= 100
+        && data.unit is string && data.unit.size() > 0 && data.unit.size() <= 50
+        && data.quantity is number
+        && data.minQuantity is number
+        && data.price is number
+        && data.location is string && data.location.size() <= 200
+        && data.lastUpdated is string;
+    }
+
+    // assets entity
+    function isValidAssetItem(data) {
+      return data.code is string && data.code.size() > 0 && data.code.size() <= 100
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.category is string && data.category.size() > 0 && data.category.size() <= 100
+        && data.serial is string && data.serial.size() <= 100
+        && data.value is number
+        && data.location is string && data.location.size() <= 200
+        && data.custodian is string && data.custodian.size() > 0 && data.custodian.size() <= 200
+        && data.purchaseDate is string
+        && data.warrantyExp is string && data.warrantyExp.size() <= 100
+        && data.status is string && (data.status == "active" || data.status == "inactive" || data.status == "repair" || data.status == "retired")
+        && data.createdAt is string;
+    }
+
+    // Rules for each collection
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create: if isValidId(categoryId) && isValidCategory(incoming());
+      allow update: if false;
+      allow delete: if isValidId(categoryId);
+    }
+
+    match /productTypes/{typeId} {
+      allow read: if true;
+      allow create: if isValidId(typeId) && isValidProductType(incoming());
+      allow update: if false;
+      allow delete: if isValidId(typeId);
+    }
+
+    match /distributors/{distId} {
+      allow read: if true;
+      allow create: if isValidId(distId) && isValidDistributor(incoming());
+      allow update: if false;
+      allow delete: if isValidId(distId);
+    }
+
+    match /stockIn/{itemId} {
+      allow read: if true;
+      allow create: if isValidId(itemId) && isValidStockInItem(incoming());
+      allow update: if isValidId(itemId) && isValidStockInItem(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['currentQty', 'serials'])
+      );
+      allow delete: if isValidId(itemId);
+    }
+
+    match /stockOut/{itemId} {
+      allow read: if true;
+      allow create: if isValidId(itemId) && isValidStockOutItem(incoming());
+      allow update: if false;
+      allow delete: if isValidId(itemId);
+    }
+
+    match /demoItems/{itemId} {
+      allow read: if true;
+      allow create: if isValidId(itemId) && isValidDemoItem(incoming());
+      allow update: if isValidId(itemId) && isValidDemoItem(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'borrower', 'borrowDate', 'expectedReturnDate']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'borrower', 'borrowDate', 'expectedReturnDate', 'actualReturnDate']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+      );
+      allow delete: if isValidId(itemId);
+    }
+
+    match /materials/{itemId} {
+      allow read: if true;
+      allow create: if isValidId(itemId) && isValidMaterialItem(incoming());
+      allow update: if isValidId(itemId) && isValidMaterialItem(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'lastUpdated'])
+      );
+      allow delete: if isValidId(itemId);
+    }
+
+    match /assets/{itemId} {
+      allow read: if true;
+      allow create: if isValidId(itemId) && isValidAssetItem(incoming());
+      allow update: if isValidId(itemId) && isValidAssetItem(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'custodian', 'location'])
+      );
+      allow delete: if isValidId(itemId);
+    }
+
+    match /equipmentLocations/{locationId} {
+      allow read: if true;
+      allow create: if isValidId(locationId) && isValidEquipmentLocation(incoming());
+      allow update: if false;
+      allow delete: if isValidId(locationId);
+    }
+
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if isValidId(userId) && isValidUserAccount(incoming());
+      allow delete: if isValidId(userId);
+    }
+
+  }
+}
