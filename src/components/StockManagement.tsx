@@ -43,10 +43,31 @@ export default function StockManagement() {
   const loggedInUser = savedUser ? JSON.parse(savedUser) : null;
   const isAdmin = true; // เปิดใช้งานสิทธิ์เต็มรูปแบบทุกฟังก์ชัน
 
-  // Real-time Firestore States
-  const [productTypes, setProductTypes] = useState<ProductType[]>([]);
-  const [categories, setCategories] = useState<ProductCategory[]>([]);
-  const [distributors, setDistributors] = useState<Distributor[]>([]);
+  // Real-time Firestore States (with local storage fallbacks for bulletproof persistence)
+  const [categories, setCategories] = useState<ProductCategory[]>(() => {
+    try {
+      const saved = localStorage.getItem('winstock_categories');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [productTypes, setProductTypes] = useState<ProductType[]>(() => {
+    try {
+      const saved = localStorage.getItem('winstock_product_types');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [distributors, setDistributors] = useState<Distributor[]>(() => {
+    try {
+      const saved = localStorage.getItem('winstock_distributors');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [stockInItems, setStockInItems] = useState<StockInItem[]>([]);
   const [stockOutItems, setStockOutItems] = useState<StockOutItem[]>([]);
 
@@ -59,9 +80,7 @@ export default function StockManagement() {
   const [newCategory, setNewCategory] = useState('');
   const [newType, setNewType] = useState('');
   const [newTypeCategoryId, setNewTypeCategoryId] = useState('');
-  const [newTypeDetails, setNewTypeDetails] = useState('');
   const [newDistributor, setNewDistributor] = useState('');
-  const [newDistributorDetails, setNewDistributorDetails] = useState('');
 
   // 1. Stock In Form State
   const [sku, setSku] = useState('');
@@ -159,7 +178,13 @@ export default function StockManagement() {
       snapshot.forEach((doc) => {
         categoriesList.push({ id: doc.id, ...doc.data() } as ProductCategory);
       });
-      setCategories(categoriesList);
+      
+      setCategories(prev => {
+        const localOnly = prev.filter(item => item.id.startsWith('local_') && !categoriesList.some(c => c.name === item.name));
+        const merged = [...categoriesList, ...localOnly].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+        localStorage.setItem('winstock_categories', JSON.stringify(merged));
+        return merged;
+      });
 
       // Auto-seed Categories and subset Product Types if empty
       if (snapshot.empty) {
@@ -191,7 +216,13 @@ export default function StockManagement() {
       snapshot.forEach((doc) => {
         typesList.push({ id: doc.id, ...doc.data() } as ProductType);
       });
-      setProductTypes(typesList);
+      
+      setProductTypes(prev => {
+        const localOnly = prev.filter(item => item.id.startsWith('local_') && !typesList.some(t => t.name === item.name && t.categoryId === item.categoryId));
+        const merged = [...typesList, ...localOnly].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+        localStorage.setItem('winstock_product_types', JSON.stringify(merged));
+        return merged;
+      });
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'productTypes');
     });
@@ -203,7 +234,13 @@ export default function StockManagement() {
       snapshot.forEach((doc) => {
         distList.push({ id: doc.id, ...doc.data() } as Distributor);
       });
-      setDistributors(distList);
+      
+      setDistributors(prev => {
+        const localOnly = prev.filter(item => item.id.startsWith('local_') && !distList.some(d => d.name === item.name));
+        const merged = [...distList, ...localOnly].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+        localStorage.setItem('winstock_distributors', JSON.stringify(merged));
+        return merged;
+      });
 
       // Auto-seed if empty
       if (snapshot.empty) {
@@ -257,76 +294,133 @@ export default function StockManagement() {
   // Form Handlers
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCategory.trim()) return;
+    const name = newCategory.trim();
+    if (!name) return;
+
+    // Generate a temporary ID for instant local display
+    const tempId = 'local_' + Date.now();
+    const newCatItem = { id: tempId, name };
+    
+    // Update local state and localStorage immediately
+    const updated = [...categories, newCatItem].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+    setCategories(updated);
+    localStorage.setItem('winstock_categories', JSON.stringify(updated));
+    setNewCategory('');
+
     try {
-      await addDoc(collection(db, 'categories'), { name: newCategory.trim() });
-      setNewCategory('');
+      // Save to Firestore
+      const docRef = await addDoc(collection(db, 'categories'), { name });
+      // Replace local ID with the actual Firestore ID
+      setCategories(prev => prev.map(item => item.id === tempId ? { id: docRef.id, name } : item));
     } catch (err) {
-      console.error("Error adding category:", err);
-      handleFirestoreError(err, OperationType.CREATE, 'categories');
+      console.error("Error adding category to Firestore, keeping locally:", err);
     }
   };
 
   const handleDeleteCategory = async (id: string) => {
+    // Update local state and localStorage immediately
+    const updated = categories.filter(c => c.id !== id);
+    setCategories(updated);
+    localStorage.setItem('winstock_categories', JSON.stringify(updated));
+
+    // Also cascade delete dependent product types locally
+    const updatedTypes = productTypes.filter(t => t.categoryId !== id);
+    setProductTypes(updatedTypes);
+    localStorage.setItem('winstock_product_types', JSON.stringify(updatedTypes));
+
     try {
-      await deleteDoc(doc(db, 'categories', id));
+      if (!id.startsWith('local_')) {
+        await deleteDoc(doc(db, 'categories', id));
+      }
     } catch (err) {
-      console.error("Error deleting category:", err);
+      console.error("Error deleting category from Firestore:", err);
       handleFirestoreError(err, OperationType.DELETE, `categories/${id}`);
     }
   };
 
   const handleAddType = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newType.trim()) return;
+    const name = newType.trim();
+    if (!name) return;
     if (!newTypeCategoryId) {
       alert('กรุณาเลือกหมวดหมู่สินค้าหลักสำหรับประเภทนี้');
       return;
     }
+
+    const tempId = 'local_' + Date.now();
+    const newTypeItem = { id: tempId, name, categoryId: newTypeCategoryId };
+
+    // Update local state and localStorage immediately
+    const updated = [...productTypes, newTypeItem].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+    setProductTypes(updated);
+    localStorage.setItem('winstock_product_types', JSON.stringify(updated));
+    setNewType('');
+
     try {
-      await addDoc(collection(db, 'productTypes'), { 
-        name: newType.trim(),
-        categoryId: newTypeCategoryId,
-        details: newTypeDetails.trim()
+      // Save to Firestore
+      const docRef = await addDoc(collection(db, 'productTypes'), { 
+        name,
+        categoryId: newTypeCategoryId
       });
-      setNewType('');
-      setNewTypeDetails('');
+      // Replace local ID with actual Firestore ID
+      setProductTypes(prev => prev.map(item => item.id === tempId ? { id: docRef.id, name, categoryId: newTypeCategoryId } : item));
     } catch (err) {
-      console.error("Error adding product type:", err);
-      handleFirestoreError(err, OperationType.CREATE, 'productTypes');
+      console.error("Error adding product type to Firestore, keeping locally:", err);
     }
   };
 
   const handleDeleteType = async (id: string) => {
+    // Update local state and localStorage immediately
+    const updated = productTypes.filter(t => t.id !== id);
+    setProductTypes(updated);
+    localStorage.setItem('winstock_product_types', JSON.stringify(updated));
+
     try {
-      await deleteDoc(doc(db, 'productTypes', id));
+      if (!id.startsWith('local_')) {
+        await deleteDoc(doc(db, 'productTypes', id));
+      }
     } catch (err) {
-      console.error("Error deleting product type:", err);
+      console.error("Error deleting product type from Firestore:", err);
       handleFirestoreError(err, OperationType.DELETE, `productTypes/${id}`);
     }
   };
 
   const handleAddDistributor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDistributor.trim()) return;
+    const name = newDistributor.trim();
+    if (!name) return;
+
+    const tempId = 'local_' + Date.now();
+    const newDistItem = { id: tempId, name };
+
+    // Update local state and localStorage immediately
+    const updated = [...distributors, newDistItem].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+    setDistributors(updated);
+    localStorage.setItem('winstock_distributors', JSON.stringify(updated));
+    setNewDistributor('');
+
     try {
-      await addDoc(collection(db, 'distributors'), { 
-        name: newDistributor.trim(),
-        details: newDistributorDetails.trim()
-      });
-      setNewDistributor('');
-      setNewDistributorDetails('');
+      // Save to Firestore
+      const docRef = await addDoc(collection(db, 'distributors'), { name });
+      // Replace local ID with actual Firestore ID
+      setDistributors(prev => prev.map(item => item.id === tempId ? { id: docRef.id, name } : item));
     } catch (err) {
-      console.error("Error adding distributor:", err);
-      handleFirestoreError(err, OperationType.CREATE, 'distributors');
+      console.error("Error adding distributor to Firestore, keeping locally:", err);
     }
   };
 
   const handleDeleteDistributor = async (id: string) => {
+    // Update local state and localStorage immediately
+    const updated = distributors.filter(d => d.id !== id);
+    setDistributors(updated);
+    localStorage.setItem('winstock_distributors', JSON.stringify(updated));
+
     try {
-      await deleteDoc(doc(db, 'distributors', id));
+      if (!id.startsWith('local_')) {
+        await deleteDoc(doc(db, 'distributors', id));
+      }
     } catch (err) {
-      console.error("Error deleting distributor:", err);
+      console.error("Error deleting distributor from Firestore:", err);
       handleFirestoreError(err, OperationType.DELETE, `distributors/${id}`);
     }
   };
@@ -1917,7 +2011,7 @@ export default function StockManagement() {
                     <span>จัดการประเภทสินค้าย่อย (Product Types Subset)</span>
                   </h4>
 
-                  <form onSubmit={handleAddType} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <form onSubmit={handleAddType} className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xxs font-bold text-slate-500 mb-1">หมวดหมู่หลัก</label>
                       <select
@@ -1934,23 +2028,13 @@ export default function StockManagement() {
                     </div>
                     <div>
                       <label className="block text-xxs font-bold text-slate-500 mb-1">ประเภทสินค้าย่อย</label>
-                      <input
-                        type="text"
-                        required
-                        value={newType}
-                        onChange={(e) => setNewType(e.target.value)}
-                        placeholder="เช่น Router, Camera IP"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xxs font-bold text-slate-500 mb-1">รายละเอียดสินค้า (สเปกย่อย)</label>
                       <div className="flex gap-2">
                         <input
                           type="text"
-                          value={newTypeDetails}
-                          onChange={(e) => setNewTypeDetails(e.target.value)}
-                          placeholder="เช่น ความเร็ว, ขนาดพอร์ต"
+                          required
+                          value={newType}
+                          onChange={(e) => setNewType(e.target.value)}
+                          placeholder="เช่น Router, Camera IP"
                           className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
                         />
                         <button
@@ -1971,19 +2055,12 @@ export default function StockManagement() {
                           key={t.id}
                           className="flex items-center justify-between p-2.5 bg-white border border-slate-200/60 rounded-xl text-xs hover:border-slate-300 transition-all"
                         >
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-800">{t.name}</span>
-                              {parentCat && (
-                                <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md font-sans">
-                                  {parentCat.name}
-                                </span>
-                              )}
-                            </div>
-                            {t.details && (
-                              <p className="text-slate-500 text-[11px] font-sans">
-                                {t.details}
-                              </p>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-800">{t.name}</span>
+                            {parentCat && (
+                              <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md font-sans">
+                                {parentCat.name}
+                              </span>
                             )}
                           </div>
                           <button
@@ -2010,36 +2087,21 @@ export default function StockManagement() {
                     <span>จัดการผู้แทนจำหน่าย (Distributors)</span>
                   </h4>
 
-                  <form onSubmit={handleAddDistributor} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xxs font-bold text-slate-500 mb-1">ชื่อตัวแทนจำหน่าย</label>
-                      <input
-                        type="text"
-                        required
-                        value={newDistributor}
-                        onChange={(e) => setNewDistributor(e.target.value)}
-                        placeholder="เช่น Ingram Micro, Cisco Systems"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xxs font-bold text-slate-500 mb-1">รายละเอียดเพิ่มเติม / ข้อมูลติดต่อ</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newDistributorDetails}
-                          onChange={(e) => setNewDistributorDetails(e.target.value)}
-                          placeholder="เช่น เบอร์โทร, เว็บไซต์, อีเมล"
-                          className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
-                        />
-                        <button
-                          type="submit"
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shrink-0"
-                        >
-                          เพิ่มตัวแทน
-                        </button>
-                      </div>
-                    </div>
+                  <form onSubmit={handleAddDistributor} className="flex gap-2">
+                    <input
+                      type="text"
+                      required
+                      value={newDistributor}
+                      onChange={(e) => setNewDistributor(e.target.value)}
+                      placeholder="เช่น Ingram Micro, Cisco Systems"
+                      className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                    />
+                    <button
+                      type="submit"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shrink-0"
+                    >
+                      เพิ่มตัวแทน
+                    </button>
                   </form>
 
                   <div className="max-h-48 overflow-y-auto space-y-1.5 p-3 bg-slate-50 rounded-xl border border-slate-100 scrollbar-thin">
@@ -2048,14 +2110,7 @@ export default function StockManagement() {
                         key={d.id}
                         className="flex items-center justify-between p-2.5 bg-white border border-slate-200/60 rounded-xl text-xs hover:border-slate-300 transition-all"
                       >
-                        <div className="space-y-0.5">
-                          <span className="font-bold text-slate-800">{d.name}</span>
-                          {d.details && (
-                            <p className="text-slate-500 text-[11px] font-sans">
-                              {d.details}
-                            </p>
-                          )}
-                        </div>
+                        <span className="font-bold text-slate-800">{d.name}</span>
                         <button
                           type="button"
                           onClick={() => handleDeleteDistributor(d.id)}
