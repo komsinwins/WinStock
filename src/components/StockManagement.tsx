@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
   addDoc, 
@@ -75,10 +75,21 @@ export default function StockManagement() {
   const [quantity, setQuantity] = useState('1');
   const [serialsText, setSerialsText] = useState(''); // Textarea with line-separated or comma-separated serials
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [stockInDate, setStockInDate] = useState(() => {
+    const d = new Date();
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
+  });
 
   // 3. Stock Out Form State
   const [customer, setCustomer] = useState('');
   const [poNumber, setPoNumber] = useState('');
+  const [projectName, setProjectName] = useState('');
+  const [stockOutDate, setStockOutDate] = useState(() => {
+    const d = new Date();
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
+  });
   const [selectedInId, setSelectedInId] = useState(''); // Stock In ID selected to withdraw from
   const [outQuantity, setOutQuantity] = useState(1);
   const [selectedSerials, setSelectedSerials] = useState<string[]>([]);
@@ -312,6 +323,19 @@ export default function StockManagement() {
     }
   };
 
+  const handleDeleteStockIn = async (id: string) => {
+    if (!window.confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนำเข้านี้? การลบจะทำให้ข้อมูลในคลังสินค้าและประวัติการนำเข้านี้หายไปอย่างถาวร')) {
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, 'stockIn', id));
+      alert('ลบรายการสำเร็จเรียบร้อย');
+    } catch (err) {
+      console.error("Error deleting stock item:", err);
+      handleFirestoreError(err, OperationType.DELETE, `stockIn/${id}`);
+    }
+  };
+
   // 1. Submit Stock In (นำเข้าสินค้า)
   const handleStockInSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -341,6 +365,10 @@ export default function StockManagement() {
       }
     }
 
+    const now = new Date();
+    const [year, month, day] = stockInDate.split('-').map(Number);
+    const createdDateTime = new Date(year, month - 1, day, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+
     const newItem: Omit<StockInItem, 'id'> = {
       sku: sku.trim(),
       type,
@@ -353,7 +381,7 @@ export default function StockManagement() {
       price: parseFloat(price) || 0,
       initialQty: finalQty,
       currentQty: finalQty,
-      createdAt: new Date().toISOString(),
+      createdAt: createdDateTime.toISOString(),
       details: details.trim(),
       invoiceNumber: invoiceNumber.trim()
     };
@@ -374,6 +402,9 @@ export default function StockManagement() {
       setQuantity('1');
       setSerialsText('');
       setInvoiceNumber('');
+      const d = new Date();
+      const tzOffset = d.getTimezoneOffset() * 60000;
+      setStockInDate(new Date(d.getTime() - tzOffset).toISOString().split('T')[0]);
       alert('บันทึกการนำเข้าสินค้าสำเร็จ');
       setActiveTab('remaining');
     } catch (err) {
@@ -415,6 +446,10 @@ export default function StockManagement() {
       updatedSerials = updatedSerials.filter(s => !selectedSerials.includes(s));
     }
 
+    const now = new Date();
+    const [year, month, day] = stockOutDate.split('-').map(Number);
+    const createdDateTime = new Date(year, month - 1, day, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+
     const outRecord: Omit<StockOutItem, 'id'> = {
       customer: customer.trim(),
       poNumber: poNumber.trim(),
@@ -425,7 +460,8 @@ export default function StockManagement() {
       quantity: withdrawQty,
       selectedSerials: selectedSerials,
       price: targetStockIn.price,
-      createdAt: new Date().toISOString()
+      createdAt: createdDateTime.toISOString(),
+      projectName: projectName.trim()
     };
 
     try {
@@ -449,11 +485,15 @@ export default function StockManagement() {
       // Reset form
       setCustomer('');
       setPoNumber('');
+      setProjectName('');
       setSelectedInId('');
       setSelectedSerials([]);
       setOutQuantity(1);
+      const d = new Date();
+      const tzOffset = d.getTimezoneOffset() * 60000;
+      setStockOutDate(new Date(d.getTime() - tzOffset).toISOString().split('T')[0]);
       
-      alert('บันทึกนำเข้าสินค้าสำเร็จ (หักสต็อคสินค้าเรียบร้อย)');
+      alert('บันทึกจ่ายสินค้าออกสำเร็จ (หักสต็อคสินค้าเรียบร้อย)');
       setActiveTab('history');
     } catch (err) {
       console.error("Error updating stock in inventory:", err);
@@ -490,7 +530,8 @@ export default function StockManagement() {
   const filteredHistory = stockOutItems.filter(item => {
     const matchesPo = item.poNumber.toLowerCase().includes(historySearchPo.toLowerCase()) ||
                       item.customer.toLowerCase().includes(historySearchPo.toLowerCase()) ||
-                      item.sku.toLowerCase().includes(historySearchPo.toLowerCase());
+                      item.sku.toLowerCase().includes(historySearchPo.toLowerCase()) ||
+                      (item.projectName ? item.projectName.toLowerCase().includes(historySearchPo.toLowerCase()) : false);
     
     let matchesDate = true;
     if (historyStartDate) {
@@ -502,6 +543,31 @@ export default function StockManagement() {
     
     return matchesPo && matchesDate;
   });
+
+  // Group filtered history by poNumber to display multiple items under 1 PO
+  const groupedHistory = useMemo(() => {
+    const groups: { [po: string]: { poNumber: string; customer: string; projectName?: string; createdAt: string; items: StockOutItem[] } } = {};
+    
+    // Sort by date descending first, so the grouping retains chronological order
+    const sortedHistory = [...filteredHistory].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    sortedHistory.forEach(item => {
+      const po = (item.poNumber || '').trim();
+      const poKey = po ? po.toLowerCase() : `no-po-${item.id}`;
+      if (!groups[poKey]) {
+        groups[poKey] = {
+          poNumber: item.poNumber || 'ไม่มี PO',
+          customer: item.customer,
+          projectName: item.projectName,
+          createdAt: item.createdAt,
+          items: []
+        };
+      }
+      groups[poKey].items.push(item);
+    });
+    
+    return Object.values(groups).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [filteredHistory]);
 
   // Calculate total dispatch value
   const totalDispatchValue = filteredHistory.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -548,11 +614,12 @@ export default function StockManagement() {
   };
 
   const handleExportExcelHistory = () => {
-    const headers = ['วันที่เบิก', 'หมายเลข PO', 'บริษัทลูกค้า', 'รหัสสินค้า/SKU', 'ชื่อสินค้า', 'ยี่ห้อ/รุ่น', 'จำนวน', 'มูลค่า (บาท)', 'ซีเรียลนัมเบอร์ที่นำออก'];
+    const headers = ['วันที่เบิก', 'หมายเลข PO', 'บริษัทลูกค้า', 'ชื่อโครงการ', 'รหัสสินค้า/SKU', 'ชื่อสินค้า', 'ยี่ห้อ/รุ่น', 'จำนวน', 'มูลค่า (บาท)', 'ซีเรียลนัมเบอร์ที่นำออก'];
     const data = filteredHistory.map(item => ({
       date: new Date(item.createdAt).toLocaleDateString('th-TH'),
       po: item.poNumber,
       customer: item.customer,
+      projectName: item.projectName || '-',
       sku: item.sku,
       name: item.name,
       model: `${item.brand} ${item.model}`,
@@ -564,11 +631,11 @@ export default function StockManagement() {
   };
 
   const handlePrintPDFHistory = () => {
-    const headers = ['วันที่เบิก', 'หมายเลข PO', 'ลูกค้า', 'รหัสสินค้า', 'ชื่อสินค้า/รุ่น', 'จำนวน', 'มูลค่ารวม'];
+    const headers = ['วันที่เบิก', 'หมายเลข PO', 'ลูกค้า / โครงการ', 'รหัสสินค้า', 'ชื่อสินค้า/รุ่น', 'จำนวน', 'มูลค่ารวม'];
     const rows = filteredHistory.map(item => [
       new Date(item.createdAt).toLocaleDateString('th-TH'),
       item.poNumber,
-      item.customer,
+      item.customer + (item.projectName ? ` (${item.projectName})` : ''),
       item.sku,
       `${item.name} (${item.brand} ${item.model})`,
       `${item.quantity} ชิ้น`,
@@ -580,6 +647,81 @@ export default function StockManagement() {
       headers, 
       rows, 
       `ยอดรวมนำออกในช่วงเวลา: ${totalDispatchQty} ชิ้น | มูลค่ารวมนำออก: ${formatBaht(totalDispatchValue)}`
+    );
+  };
+
+  const handleExportExcelRecentImports = () => {
+    const headers = ['วันที่นำเข้า', 'รหัสสินค้า/SKU', 'ประเภทสินค้า', 'ชื่อสินค้า', 'ยี่ห้อ', 'รุ่น', 'จำนวนนำเข้า', 'ราคาจัดซื้อต่อชิ้น (บาท)', 'ราคาทั้งหมด (บาท)', 'ใบกำกับภาษี/Invoice', 'ซีเรียลนัมเบอร์'];
+    const data = stockInItems.map(item => ({
+      date: new Date(item.createdAt).toLocaleDateString('th-TH') + ' ' + new Date(item.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+      sku: item.sku,
+      type: item.type,
+      name: item.name,
+      brand: item.brand,
+      model: item.model,
+      qty: item.initialQty,
+      price: item.price,
+      totalPrice: item.price * item.initialQty,
+      invoice: item.invoiceNumber || '-',
+      serials: item.serials ? item.serials.join(', ') : '-'
+    }));
+    exportToExcel(data, headers, `ประวัติการนำเข้าสินค้า_${new Date().toISOString().split('T')[0]}`);
+  };
+
+  const handlePrintPDFRecentImports = () => {
+    const headers = ['วันที่นำเข้า', 'รหัสสินค้า/SKU', 'ชื่อสินค้า', 'ยี่ห้อ/รุ่น', 'ราคาทั้งหมด', 'จำนวนนำเข้า', 'ใบกำกับภาษี'];
+    const rows = stockInItems.map(item => [
+      new Date(item.createdAt).toLocaleDateString('th-TH') + ' ' + new Date(item.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+      item.sku,
+      item.name,
+      `${item.brand} / ${item.model}`,
+      formatBaht(item.price * item.initialQty),
+      `${item.initialQty} ชิ้น`,
+      item.invoiceNumber || '-'
+    ]);
+    const totalQty = stockInItems.reduce((sum, item) => sum + item.initialQty, 0);
+    const totalVal = stockInItems.reduce((sum, item) => sum + (item.price * item.initialQty), 0);
+    
+    printReport(
+      'รายงานประวัติการนำเข้าล็อตล่าสุด', 
+      headers, 
+      rows, 
+      `จำนวนนำเข้ารวมทั้งหมด: ${totalQty} ชิ้น | มูลค่ารวมการนำเข้า: ${formatBaht(totalVal)}`
+    );
+  };
+
+  const handleExportExcelOutRemaining = () => {
+    const availableItems = stockInItems.filter(x => x.currentQty > 0);
+    const headers = ['รหัสสินค้า/SKU', 'ประเภทสินค้า', 'ชื่อสินค้า', 'ยี่ห้อ', 'รุ่น', 'ผู้จัดจำหน่าย', 'คงเหลือพร้อมใช้'];
+    const data = availableItems.map(item => ({
+      sku: item.sku,
+      type: item.type,
+      name: item.name,
+      brand: item.brand,
+      model: item.model,
+      distributor: item.distributor,
+      qty: item.currentQty
+    }));
+    exportToExcel(data, headers, `สินค้าคงเหลือพร้อมเบิกจ่าย_${new Date().toISOString().split('T')[0]}`);
+  };
+
+  const handlePrintPDFOutRemaining = () => {
+    const availableItems = stockInItems.filter(x => x.currentQty > 0);
+    const headers = ['รหัสสินค้า/SKU', 'ชื่อสินค้า', 'ยี่ห้อ/รุ่น', 'ผู้จัดจำหน่าย', 'คงเหลือพร้อมใช้'];
+    const rows = availableItems.map(item => [
+      item.sku,
+      item.name,
+      `${item.brand} ${item.model}`,
+      item.distributor,
+      `${item.currentQty} ชิ้น`
+    ]);
+    const totalQty = availableItems.reduce((sum, item) => sum + item.currentQty, 0);
+    
+    printReport(
+      'รายงานสินค้าคงเหลือพร้อมเบิกจ่าย', 
+      headers, 
+      rows, 
+      `ยอดคงเหลือพร้อมใช้ทั้งหมด: ${totalQty} ชิ้น`
     );
   };
 
@@ -773,6 +915,7 @@ export default function StockManagement() {
                       <th className="py-3.5 px-6 text-xs font-semibold text-slate-600 uppercase tracking-wider">ราคาจัดซื้อ</th>
                       <th className="py-3.5 px-6 text-xs font-semibold text-slate-600 uppercase tracking-wider">ระยะประกัน / ผู้จำหน่าย</th>
                       <th className="py-3.5 px-6 text-xs font-semibold text-slate-600 uppercase tracking-wider text-right">จำนวนคงเหลือ</th>
+                      <th className="py-3.5 px-6 text-xs font-semibold text-slate-600 uppercase tracking-wider text-center">จัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -817,6 +960,32 @@ export default function StockManagement() {
                               S/N: {item.serials.join(', ')}
                             </div>
                           )}
+                        </td>
+                        <td className="py-4 px-6 text-center">
+                          <div className="flex items-center justify-center space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedInId(item.id);
+                                setSelectedSerials([]);
+                                setOutQuantity(1);
+                                setActiveTab('out');
+                              }}
+                              className="inline-flex items-center space-x-1 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-100 rounded-xl text-xs font-bold transition-all shadow-xxs cursor-pointer"
+                              title="เลือกเพื่อจ่ายสินค้าออก"
+                            >
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                              <span>จ่ายออก</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStockIn(item.id)}
+                              className="inline-flex items-center justify-center p-1.5 bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-red-600 border border-slate-100 hover:border-red-100 rounded-xl transition-all shadow-xxs cursor-pointer"
+                              title="ลบรายการ"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -924,6 +1093,17 @@ export default function StockManagement() {
                 </div>
 
                 <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่นำเข้าสินค้า *</label>
+                  <input
+                    type="date"
+                    required
+                    value={stockInDate}
+                    onChange={(e) => setStockInDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเลข Invoice / ใบกำกับภาษี</label>
                   <input
                     type="text"
@@ -935,7 +1115,7 @@ export default function StockManagement() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">รายละเอียดสินค้า (เพิ่มเติม)</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">รายละเอียดสินค้า</label>
                   <input
                     type="text"
                     value={details}
@@ -1053,9 +1233,31 @@ export default function StockManagement() {
             {/* Recent receipts table */}
             <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col justify-between">
               <div>
-                <div className="p-6 border-b border-slate-100">
-                  <h2 className="text-lg font-bold text-slate-800">ประวัติการนำเข้าล็อตล่าสุด</h2>
-                  <p className="text-xs text-slate-500 mt-1 font-sans">แสดงรายการที่คุณเพิ่งบันทึกนำเข้ามาในระบบ WinStock</p>
+                <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800">ประวัติการนำเข้าล็อตล่าสุด</h2>
+                    <p className="text-xs text-slate-500 mt-1 font-sans">แสดงรายการที่คุณเพิ่งบันทึกนำเข้ามาในระบบ WinStock</p>
+                  </div>
+                  {stockInItems.length > 0 && (
+                    <div className="flex gap-2 self-start sm:self-auto">
+                      <button
+                        onClick={handleExportExcelRecentImports}
+                        className="flex items-center justify-center space-x-1.5 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                        title="Export as Excel"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Excel</span>
+                      </button>
+                      <button
+                        onClick={handlePrintPDFRecentImports}
+                        className="flex items-center justify-center space-x-1.5 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                        title="Print / Save PDF"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-sky-600" />
+                        <span>PDF</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1073,6 +1275,7 @@ export default function StockManagement() {
                           <th className="py-3.5 px-6 text-xs font-semibold text-slate-600 uppercase">ชื่อสินค้า</th>
                           <th className="py-3.5 px-6 text-xs font-semibold text-slate-600 uppercase">ราคาทั้งหมด</th>
                           <th className="py-3.5 px-6 text-xs font-semibold text-slate-600 uppercase text-right">จำนวนนำเข้า</th>
+                          <th className="py-3.5 px-6 text-xs font-semibold text-slate-600 uppercase text-center">จัดการ</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1098,6 +1301,16 @@ export default function StockManagement() {
                             </td>
                             <td className="py-3.5 px-6 text-right text-sm font-bold text-slate-800">
                               {item.initialQty} ชิ้น
+                            </td>
+                            <td className="py-3.5 px-6 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStockIn(item.id)}
+                                className="inline-flex items-center justify-center p-1.5 bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-red-600 border border-slate-100 hover:border-red-100 rounded-xl transition-all shadow-xxs cursor-pointer"
+                                title="ลบรายการ"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -1143,6 +1356,17 @@ export default function StockManagement() {
                 </div>
 
                 <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">ชื่อโครงการ</label>
+                  <input
+                    type="text"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    placeholder="เช่น โครงการติดตั้งเครือข่าย อาคาร A"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">หมายเลขเอกสาร PO *</label>
                   <input
                     type="text"
@@ -1150,6 +1374,17 @@ export default function StockManagement() {
                     value={poNumber}
                     onChange={(e) => setPoNumber(e.target.value)}
                     placeholder="เช่น PO-2026-0089"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่จ่ายสินค้าออก *</label>
+                  <input
+                    type="date"
+                    required
+                    value={stockOutDate}
+                    onChange={(e) => setStockOutDate(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>
@@ -1312,9 +1547,31 @@ export default function StockManagement() {
 
             {/* List of current available products helper */}
             <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden p-6 space-y-4">
-              <div>
-                <h2 className="text-lg font-bold text-slate-800">รายการคลังสินค้าคงเหลือพร้อมเบิกจ่าย</h2>
-                <p className="text-xs text-slate-500">เลือกเบิกจ่ายสินค้าผ่านการอ้างอิง SKU และตัดสต็อกคงคลังแบบ Real-time</p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">รายการคลังสินค้าคงเหลือพร้อมเบิกจ่าย</h2>
+                  <p className="text-xs text-slate-500">เลือกเบิกจ่ายสินค้าผ่านการอ้างอิง SKU และตัดสต็อกคงคลังแบบ Real-time</p>
+                </div>
+                {stockInItems.filter(x => x.currentQty > 0).length > 0 && (
+                  <div className="flex gap-2 self-start sm:self-auto">
+                    <button
+                      onClick={handleExportExcelOutRemaining}
+                      className="flex items-center justify-center space-x-1.5 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                      title="Export as Excel"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Excel</span>
+                    </button>
+                    <button
+                      onClick={handlePrintPDFOutRemaining}
+                      className="flex items-center justify-center space-x-1.5 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                      title="Print / Save PDF"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-sky-600" />
+                      <span>PDF</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="overflow-x-auto">
@@ -1461,66 +1718,105 @@ export default function StockManagement() {
             </div>
 
             {/* Main History Table */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-slate-100">
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
                 <h3 className="text-base font-bold text-slate-800">รายการประวัติสินค้าออกคลัง (WinStock Out)</h3>
-                <p className="text-xs text-slate-500 mt-0.5">รวมตารางสินค้าออกคลังพร้อมข้อมูลรหัสอ้างอิง PO และเลข S/N</p>
+                <p className="text-xs text-slate-500 mt-0.5">รวมตารางสินค้าออกคลังพร้อมข้อมูลรหัสอ้างอิง PO และเลข S/N จัดกลุ่มตามหมายเลขเอกสาร PO</p>
               </div>
 
-              <div className="overflow-x-auto">
-                {filteredHistory.length === 0 ? (
-                  <div className="py-20 text-center">
+              <div className="space-y-6">
+                {groupedHistory.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm py-20 text-center">
                     <Boxes className="w-12 h-12 text-slate-300 mx-auto stroke-1" />
                     <p className="text-sm text-slate-500 mt-2">ไม่พบประวัติการจ่ายออกสำหรับตัวเลือกนี้</p>
                   </div>
                 ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100">
-                        <th className="py-3 px-6 text-xs font-semibold text-slate-600 uppercase">วันที่นำออก</th>
-                        <th className="py-3 px-6 text-xs font-semibold text-slate-600 uppercase">หมายเลขเอกสาร PO</th>
-                        <th className="py-3 px-6 text-xs font-semibold text-slate-600 uppercase">บริษัทลูกค้า</th>
-                        <th className="py-3 px-6 text-xs font-semibold text-slate-600 uppercase">รหัส SKU</th>
-                        <th className="py-3 px-6 text-xs font-semibold text-slate-600 uppercase">รายละเอียดสินค้า</th>
-                        <th className="py-3 px-6 text-xs font-semibold text-slate-600 uppercase">มูลค่ารวม</th>
-                        <th className="py-3 px-6 text-xs font-semibold text-slate-600 uppercase text-right">จำนวนจ่ายออก</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredHistory.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-50/50 text-sm">
-                          <td className="py-4 px-6 text-xs font-mono text-slate-500">
-                            {new Date(item.createdAt).toLocaleDateString('th-TH', {
+                  groupedHistory.map((poGroup, idx) => (
+                    <div key={poGroup.poNumber + '_' + idx} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:border-indigo-100 transition-all">
+                      {/* Group Header */}
+                      <div className="p-5 bg-slate-50/60 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl font-mono text-xs font-bold border border-indigo-100">
+                            PO: {poGroup.poNumber}
+                          </span>
+                          {poGroup.projectName && (
+                            <span className="px-3 py-1.5 bg-indigo-50/50 text-indigo-800 rounded-xl font-semibold text-xs border border-indigo-100/50 flex items-center space-x-1">
+                              <span>🏗️</span>
+                              <span>โครงการ: {poGroup.projectName}</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-right text-xs text-slate-500 font-mono flex items-center space-x-2">
+                          <span>📅 วันที่จ่ายออก:</span>
+                          <span className="font-bold text-slate-700">
+                            {new Date(poGroup.createdAt).toLocaleDateString('th-TH', {
                               year: 'numeric', month: 'short', day: 'numeric',
                               hour: '2-digit', minute: '2-digit'
                             })}
-                          </td>
-                          <td className="py-4 px-6 font-mono text-xs font-bold text-slate-700">{item.poNumber}</td>
-                          <td className="py-4 px-6 font-semibold text-slate-800">{item.customer}</td>
-                          <td className="py-4 px-6 font-mono text-xs text-indigo-600">{item.sku}</td>
-                          <td className="py-4 px-6">
-                            <div className="font-medium text-slate-800">{item.name}</div>
-                            <div className="text-xxs text-slate-500 mt-0.5">{item.brand} {item.model}</div>
-                            {item.selectedSerials && item.selectedSerials.length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {item.selectedSerials.map(sn => (
-                                  <span key={sn} className="px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-600 font-mono text-xxs">
-                                    {sn}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 font-bold text-slate-700">
-                            {formatBaht(item.price * item.quantity)}
-                          </td>
-                          <td className="py-4 px-6 text-right font-black text-slate-800 text-base">
-                            {item.quantity} <span className="text-xs font-normal text-slate-500">ชิ้น</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-6">
+                        <div className="flex items-center space-x-2 mb-4 text-sm">
+                          <span className="text-slate-500 font-medium">🏢 บริษัทลูกค้า:</span>
+                          <span className="font-bold text-slate-800">{poGroup.customer}</span>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-slate-100">
+                          <table className="w-full text-left border-collapse text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-100 text-slate-600 font-semibold uppercase">
+                                <th className="py-2.5 px-4">รหัส SKU</th>
+                                <th className="py-2.5 px-4">รายละเอียดสินค้า</th>
+                                <th className="py-2.5 px-4 text-right">ราคาต่อหน่วย</th>
+                                <th className="py-2.5 px-4 text-center">จำนวนจ่ายออก</th>
+                                <th className="py-2.5 px-4 text-right">มูลค่ารวม</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {poGroup.items.map((item) => (
+                                <tr key={item.id} className="hover:bg-slate-50/40 text-xs">
+                                  <td className="py-3 px-4 font-mono font-bold text-indigo-600">{item.sku}</td>
+                                  <td className="py-3 px-4">
+                                    <div className="font-semibold text-slate-800">{item.name}</div>
+                                    <div className="text-xxs text-slate-500 mt-0.5">{item.brand} {item.model}</div>
+                                    {item.selectedSerials && item.selectedSerials.length > 0 && (
+                                      <div className="mt-1 flex flex-wrap gap-1">
+                                        {item.selectedSerials.map(sn => (
+                                          <span key={sn} className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-xxs border border-slate-200/40">
+                                            S/N: {sn}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 text-right text-slate-600 font-mono">{formatBaht(item.price)}</td>
+                                  <td className="py-3 px-4 text-center font-bold text-slate-800 text-sm">
+                                    {item.quantity} ชิ้น
+                                  </td>
+                                  <td className="py-3 px-4 text-right font-black text-slate-700 font-mono">
+                                    {formatBaht(item.price * item.quantity)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="bg-slate-50/50 font-bold border-t border-slate-100 text-xs text-slate-800">
+                                <td colSpan={3} className="py-2.5 px-4 text-right text-slate-500">ยอดรวมของ PO นี้:</td>
+                                <td className="py-2.5 px-4 text-center text-slate-800 font-black text-sm">
+                                  {poGroup.items.reduce((sum, item) => sum + item.quantity, 0)} ชิ้น
+                                </td>
+                                <td className="py-2.5 px-4 text-right text-indigo-700 font-black text-sm font-mono">
+                                  {formatBaht(poGroup.items.reduce((sum, item) => sum + (item.price * item.quantity), 0))}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>

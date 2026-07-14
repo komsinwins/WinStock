@@ -44,6 +44,7 @@ export interface StockOutItem {
   selectedSerials: string[]; // ซีเรียลนัมเบอร์ที่เลือก (สามารถมีได้หลายรายการ)
   price: number;           // ราคาที่ขาย/นำออก
   createdAt: string;       // วันที่นำออก
+  projectName?: string;    // ชื่อโครงการ
 }
 
 export interface DemoItem {
