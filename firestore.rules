@@ -38,11 +38,13 @@ service cloud.firestore {
 
     function isValidProductType(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() <= 100
-        && (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() <= 100));
+        && (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() <= 100))
+        && (!('details' in data) || (data.details is string && data.details.size() <= 1000));
     }
 
     function isValidDistributor(data) {
-      return data.name is string && data.name.size() > 0 && data.name.size() <= 100;
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && (!('details' in data) || (data.details is string && data.details.size() <= 1000));
     }
 
     function isValidStockInItem(data) {

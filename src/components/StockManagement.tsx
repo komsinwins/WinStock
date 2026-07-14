@@ -59,7 +59,9 @@ export default function StockManagement() {
   const [newCategory, setNewCategory] = useState('');
   const [newType, setNewType] = useState('');
   const [newTypeCategoryId, setNewTypeCategoryId] = useState('');
+  const [newTypeDetails, setNewTypeDetails] = useState('');
   const [newDistributor, setNewDistributor] = useState('');
+  const [newDistributorDetails, setNewDistributorDetails] = useState('');
 
   // 1. Stock In Form State
   const [sku, setSku] = useState('');
@@ -284,9 +286,11 @@ export default function StockManagement() {
     try {
       await addDoc(collection(db, 'productTypes'), { 
         name: newType.trim(),
-        categoryId: newTypeCategoryId
+        categoryId: newTypeCategoryId,
+        details: newTypeDetails.trim()
       });
       setNewType('');
+      setNewTypeDetails('');
     } catch (err) {
       console.error("Error adding product type:", err);
       handleFirestoreError(err, OperationType.CREATE, 'productTypes');
@@ -306,8 +310,12 @@ export default function StockManagement() {
     e.preventDefault();
     if (!newDistributor.trim()) return;
     try {
-      await addDoc(collection(db, 'distributors'), { name: newDistributor.trim() });
+      await addDoc(collection(db, 'distributors'), { 
+        name: newDistributor.trim(),
+        details: newDistributorDetails.trim()
+      });
       setNewDistributor('');
+      setNewDistributorDetails('');
     } catch (err) {
       console.error("Error adding distributor:", err);
       handleFirestoreError(err, OperationType.CREATE, 'distributors');
@@ -1909,106 +1917,157 @@ export default function StockManagement() {
                     <span>จัดการประเภทสินค้าย่อย (Product Types Subset)</span>
                   </h4>
 
-                  <form onSubmit={handleAddType} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <select
-                      required
-                      value={newTypeCategoryId}
-                      onChange={(e) => setNewTypeCategoryId(e.target.value)}
-                      className="px-3 py-1.5 border border-slate-200 rounded-xl text-sm"
-                    >
-                      <option value="">-- เลือกหมวดหมู่หลัก --</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      required
-                      value={newType}
-                      onChange={(e) => setNewType(e.target.value)}
-                      placeholder="เช่น Router, Camera IP"
-                      className="px-3 py-1.5 border border-slate-200 rounded-xl text-sm"
-                    />
-                    <button
-                      type="submit"
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-1.5 rounded-xl transition-colors h-full"
-                    >
-                      เพิ่มประเภทสินค้า
-                    </button>
+                  <form onSubmit={handleAddType} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xxs font-bold text-slate-500 mb-1">หมวดหมู่หลัก</label>
+                      <select
+                        required
+                        value={newTypeCategoryId}
+                        onChange={(e) => setNewTypeCategoryId(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white"
+                      >
+                        <option value="">-- เลือกหมวดหมู่หลัก --</option>
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xxs font-bold text-slate-500 mb-1">ประเภทสินค้าย่อย</label>
+                      <input
+                        type="text"
+                        required
+                        value={newType}
+                        onChange={(e) => setNewType(e.target.value)}
+                        placeholder="เช่น Router, Camera IP"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xxs font-bold text-slate-500 mb-1">รายละเอียดสินค้า (สเปกย่อย)</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newTypeDetails}
+                          onChange={(e) => setNewTypeDetails(e.target.value)}
+                          placeholder="เช่น ความเร็ว, ขนาดพอร์ต"
+                          className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                        />
+                        <button
+                          type="submit"
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shrink-0"
+                        >
+                          เพิ่มประเภท
+                        </button>
+                      </div>
+                    </div>
                   </form>
 
-                  <div className="flex flex-wrap gap-1.5 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 p-3 bg-slate-50 rounded-xl border border-slate-100 scrollbar-thin">
                     {productTypes.map((t) => {
                       const parentCat = categories.find(c => c.id === t.categoryId);
                       return (
-                        <span
+                        <div
                           key={t.id}
-                          className="inline-flex items-center space-x-1 pl-2.5 pr-1.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700"
+                          className="flex items-center justify-between p-2.5 bg-white border border-slate-200/60 rounded-xl text-xs hover:border-slate-300 transition-all"
                         >
-                          <span>{t.name}</span>
-                          {parentCat && (
-                            <span className="text-xxs text-slate-400 bg-slate-100 px-1 py-0.5 rounded-xs font-sans">
-                              {parentCat.name}
-                            </span>
-                          )}
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800">{t.name}</span>
+                              {parentCat && (
+                                <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md font-sans">
+                                  {parentCat.name}
+                                </span>
+                              )}
+                            </div>
+                            {t.details && (
+                              <p className="text-slate-500 text-[11px] font-sans">
+                                {t.details}
+                              </p>
+                            )}
+                          </div>
                           <button
                             type="button"
                             onClick={() => handleDeleteType(t.id)}
-                            className="p-0.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="ลบประเภทสินค้า"
                           >
-                            <X className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        </span>
+                        </div>
                       );
                     })}
                     {productTypes.length === 0 && (
-                      <span className="text-xs text-slate-400 font-sans py-1">ไม่มีข้อมูลประเภทสินค้า</span>
+                      <div className="text-center text-xs text-slate-400 font-sans py-4">ไม่มีข้อมูลประเภทสินค้า</div>
                     )}
                   </div>
                 </div>
 
-                {/* 2. Distributor Setup */}
+                {/* 3. Distributor Setup */}
                 <div className="space-y-3 pt-4 border-t border-slate-100">
                   <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center space-x-1.5">
                     <Boxes className="w-3.5 h-3.5 text-indigo-600" />
                     <span>จัดการผู้แทนจำหน่าย (Distributors)</span>
                   </h4>
 
-                  <form onSubmit={handleAddDistributor} className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      value={newDistributor}
-                      onChange={(e) => setNewDistributor(e.target.value)}
-                      placeholder="เช่น Ingram Micro, Cisco Systems"
-                      className="flex-1 px-3 py-1.5 border border-slate-200 rounded-xl text-sm"
-                    />
-                    <button
-                      type="submit"
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-1.5 rounded-xl transition-colors"
-                    >
-                      เพิ่มตัวแทน
-                    </button>
+                  <form onSubmit={handleAddDistributor} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xxs font-bold text-slate-500 mb-1">ชื่อตัวแทนจำหน่าย</label>
+                      <input
+                        type="text"
+                        required
+                        value={newDistributor}
+                        onChange={(e) => setNewDistributor(e.target.value)}
+                        placeholder="เช่น Ingram Micro, Cisco Systems"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xxs font-bold text-slate-500 mb-1">รายละเอียดเพิ่มเติม / ข้อมูลติดต่อ</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newDistributorDetails}
+                          onChange={(e) => setNewDistributorDetails(e.target.value)}
+                          placeholder="เช่น เบอร์โทร, เว็บไซต์, อีเมล"
+                          className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                        />
+                        <button
+                          type="submit"
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shrink-0"
+                        >
+                          เพิ่มตัวแทน
+                        </button>
+                      </div>
+                    </div>
                   </form>
 
-                  <div className="flex flex-wrap gap-1.5 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 p-3 bg-slate-50 rounded-xl border border-slate-100 scrollbar-thin">
                     {distributors.map((d) => (
-                      <span
+                      <div
                         key={d.id}
-                        className="inline-flex items-center space-x-1 pl-2.5 pr-1.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700"
+                        className="flex items-center justify-between p-2.5 bg-white border border-slate-200/60 rounded-xl text-xs hover:border-slate-300 transition-all"
                       >
-                        <span>{d.name}</span>
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-slate-800">{d.name}</span>
+                          {d.details && (
+                            <p className="text-slate-500 text-[11px] font-sans">
+                              {d.details}
+                            </p>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={() => handleDeleteDistributor(d.id)}
-                          className="p-0.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
+                          className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="ลบตัวแทนจำหน่าย"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                      </span>
+                      </div>
                     ))}
                     {distributors.length === 0 && (
-                      <span className="text-xs text-slate-400 font-sans py-1">ไม่มีผู้จำหน่ายบันทึกไว้</span>
+                      <div className="text-center text-xs text-slate-400 font-sans py-4">ไม่มีผู้จำหน่ายบันทึกไว้</div>
                     )}
                   </div>
                 </div>

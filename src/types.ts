@@ -2,6 +2,7 @@ export interface ProductType {
   id: string;
   name: string;
   categoryId?: string;
+  details?: string;
 }
 
 export interface ProductCategory {
@@ -12,6 +13,7 @@ export interface ProductCategory {
 export interface Distributor {
   id: string;
   name: string;
+  details?: string;
 }
 
 export interface StockInItem {

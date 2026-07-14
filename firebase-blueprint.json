@@ -15,7 +15,8 @@
       "type": "object",
       "properties": {
         "name": { "type": "string", "minLength": 1, "maxLength": 100 },
-        "categoryId": { "type": "string", "maxLength": 100 }
+        "categoryId": { "type": "string", "maxLength": 100 },
+        "details": { "type": "string", "maxLength": 1000 }
       },
       "required": ["name"]
     },
@@ -24,7 +25,8 @@
       "description": "Distributors of items",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "minLength": 1, "maxLength": 100 }
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "details": { "type": "string", "maxLength": 1000 }
       },
       "required": ["name"]
     },
