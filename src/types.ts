@@ -12,8 +12,10 @@ export interface ProductCategory {
 
 export interface Distributor {
   id: string;
-  name: string;
-  details?: string;
+  name: string; // ชื่อบริษัท/ผู้แทนจำหน่าย
+  salesName?: string; // ชื่อเซลส์ที่ติดต่อ
+  phone?: string; // เบอร์โทรติดต่อ
+  paymentTerms?: string; // เงื่อนไขชำระเงิน
 }
 
 export interface StockInItem {

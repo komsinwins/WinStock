@@ -33,7 +33,9 @@ import {
   X,
   AlertCircle,
   Check,
-  Camera
+  Camera,
+  Edit,
+  Briefcase
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from './BarcodeScanner';
@@ -72,15 +74,32 @@ export default function StockManagement() {
   const [stockOutItems, setStockOutItems] = useState<StockOutItem[]>([]);
 
   // Local UI / Form States
-  const [activeTab, setActiveTab] = useState<'remaining' | 'in' | 'out' | 'history'>('remaining');
+  const [activeTab, setActiveTab] = useState<'remaining' | 'in' | 'out' | 'history' | 'categories' | 'distributors'>('remaining');
   const [loading, setLoading] = useState(true);
+  const [subTypeFilterCategory, setSubTypeFilterCategory] = useState<string>('');
 
-  // Configuration Modal States
-  const [showConfigModal, setShowConfigModal] = useState(false);
+  // Configuration States (Product Categories & Distributors)
   const [newCategory, setNewCategory] = useState('');
   const [newType, setNewType] = useState('');
   const [newTypeCategoryId, setNewTypeCategoryId] = useState('');
   const [newDistributor, setNewDistributor] = useState('');
+  const [newDistSalesName, setNewDistSalesName] = useState('');
+  const [newDistPhone, setNewDistPhone] = useState('');
+  const [newDistPaymentTerms, setNewDistPaymentTerms] = useState('');
+
+  // Inline editing states for categories & productTypes & distributors
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState('');
+
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [editingTypeName, setEditingTypeName] = useState('');
+  const [editingTypeCategoryId, setEditingTypeCategoryId] = useState('');
+
+  const [editingDistributorId, setEditingDistributorId] = useState<string | null>(null);
+  const [editingDistName, setEditingDistName] = useState('');
+  const [editingDistSales, setEditingDistSales] = useState('');
+  const [editingDistPhone, setEditingDistPhone] = useState('');
+  const [editingDistPayment, setEditingDistPayment] = useState('');
 
   // 1. Stock In Form State
   const [sku, setSku] = useState('');
@@ -390,20 +409,32 @@ export default function StockManagement() {
     const name = newDistributor.trim();
     if (!name) return;
 
+    const salesName = newDistSalesName.trim();
+    const phone = newDistPhone.trim();
+    const paymentTerms = newDistPaymentTerms.trim();
+
     const tempId = 'local_' + Date.now();
-    const newDistItem = { id: tempId, name };
+    const newDistItem = { id: tempId, name, salesName, phone, paymentTerms };
 
     // Update local state and localStorage immediately
     const updated = [...distributors, newDistItem].sort((a, b) => a.name.localeCompare(b.name, 'th'));
     setDistributors(updated);
     localStorage.setItem('winstock_distributors', JSON.stringify(updated));
     setNewDistributor('');
+    setNewDistSalesName('');
+    setNewDistPhone('');
+    setNewDistPaymentTerms('');
 
     try {
       // Save to Firestore
-      const docRef = await addDoc(collection(db, 'distributors'), { name });
+      const docRef = await addDoc(collection(db, 'distributors'), {
+        name,
+        salesName,
+        phone,
+        paymentTerms
+      });
       // Replace local ID with actual Firestore ID
-      setDistributors(prev => prev.map(item => item.id === tempId ? { id: docRef.id, name } : item));
+      setDistributors(prev => prev.map(item => item.id === tempId ? { id: docRef.id, name, salesName, phone, paymentTerms } : item));
     } catch (err) {
       console.error("Error adding distributor to Firestore, keeping locally:", err);
     }
@@ -422,6 +453,70 @@ export default function StockManagement() {
     } catch (err) {
       console.error("Error deleting distributor from Firestore:", err);
       handleFirestoreError(err, OperationType.DELETE, `distributors/${id}`);
+    }
+  };
+
+  const handleUpdateCategory = async (id: string, name: string) => {
+    if (!name.trim()) return;
+    const cleanName = name.trim();
+    const updated = categories.map(c => c.id === id ? { ...c, name: cleanName } : c);
+    setCategories(updated);
+    localStorage.setItem('winstock_categories', JSON.stringify(updated));
+    setEditingCategoryId(null);
+
+    try {
+      if (!id.startsWith('local_')) {
+        await updateDoc(doc(db, 'categories', id), { name: cleanName });
+      }
+    } catch (err) {
+      console.error("Error updating category:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `categories/${id}`);
+    }
+  };
+
+  const handleUpdateType = async (id: string, name: string, categoryId: string) => {
+    if (!name.trim() || !categoryId) return;
+    const cleanName = name.trim();
+    const updated = productTypes.map(t => t.id === id ? { ...t, name: cleanName, categoryId } : t);
+    setProductTypes(updated);
+    localStorage.setItem('winstock_product_types', JSON.stringify(updated));
+    setEditingTypeId(null);
+
+    try {
+      if (!id.startsWith('local_')) {
+        await updateDoc(doc(db, 'productTypes', id), { name: cleanName, categoryId });
+      }
+    } catch (err) {
+      console.error("Error updating product type:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `productTypes/${id}`);
+    }
+  };
+
+  const handleUpdateDistributor = async (id: string, name: string, salesName: string, phone: string, paymentTerms: string) => {
+    if (!name.trim()) return;
+    const cleanName = name.trim();
+    const cleanSales = salesName.trim();
+    const cleanPhone = phone.trim();
+    const cleanPayment = paymentTerms.trim();
+
+    const updatedItem = { id, name: cleanName, salesName: cleanSales, phone: cleanPhone, paymentTerms: cleanPayment };
+    const updated = distributors.map(d => d.id === id ? updatedItem : d);
+    setDistributors(updated);
+    localStorage.setItem('winstock_distributors', JSON.stringify(updated));
+    setEditingDistributorId(null);
+
+    try {
+      if (!id.startsWith('local_')) {
+        await updateDoc(doc(db, 'distributors', id), {
+          name: cleanName,
+          salesName: cleanSales,
+          phone: cleanPhone,
+          paymentTerms: cleanPayment
+        });
+      }
+    } catch (err) {
+      console.error("Error updating distributor:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `distributors/${id}`);
     }
   };
 
@@ -927,17 +1022,31 @@ export default function StockManagement() {
           >
             📋 ประวัติจ่ายสินค้าออก
           </button>
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => setActiveTab('categories')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === 'categories'
+                    ? 'bg-white text-indigo-600 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                }`}
+              >
+                🗂️ หมวดหมู่และประเภทสินค้าย่อย
+              </button>
+              <button
+                onClick={() => setActiveTab('distributors')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === 'distributors'
+                    ? 'bg-white text-indigo-600 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                }`}
+              >
+                🏢 ผู้แทนจำหน่าย
+              </button>
+            </>
+          )}
         </div>
-
-        {isAdmin && (
-          <button
-            onClick={() => setShowConfigModal(true)}
-            className="flex items-center space-x-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50/50 hover:bg-indigo-50 px-3.5 py-2 rounded-lg border border-indigo-100 transition-colors"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>ตั้งค่าประเภท / ผู้แทนจำหน่าย</span>
-          </button>
-        )}
       </div>
 
       {/* Main Tab Contents */}
@@ -1926,221 +2035,507 @@ export default function StockManagement() {
         )}
       </AnimatePresence>
 
-      {/* Dynamic Config Settings Modal */}
-      <AnimatePresence>
-        {showConfigModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowConfigModal(false)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs"
-            />
-            
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-2xl bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]"
-            >
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                <div>
-                  <h3 className="text-base font-bold text-slate-800">จัดการประเภทสินค้าและตัวแทนจำหน่าย</h3>
-                  <p className="text-xs text-slate-500 mt-1">เพิ่มหรือลบตัวเลือกประเภทสินค้าและ Distributor แบบไดนามิก</p>
-                </div>
-                <button
-                  onClick={() => setShowConfigModal(false)}
-                  className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
-                >
-                  <X className="w-5 h-5 text-slate-500" />
-                </button>
+        {/* T5: Categories and Product Types (หมวดหมู่และประเภทสินค้า) */}
+        {activeTab === 'categories' && (
+          <motion.div
+            key="categories"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+          >
+            {/* Left Box: Categories */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Tag className="w-5 h-5 text-indigo-600" />
+                  <span>จัดการหมวดหมู่สินค้า (Product Categories)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">หมวดหมู่สินค้าหลักสำหรับจัดกลุ่มประเภทสินค้าและประวัติคงเหลือ</p>
               </div>
 
-              <div className="p-6 overflow-y-auto space-y-6 scrollbar-thin">
-                {/* 1. Category Setup */}
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center space-x-1.5">
-                    <Tag className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>จัดการหมวดหมู่สินค้า (Product Categories)</span>
-                  </h4>
+              <form onSubmit={handleAddCategory} className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  placeholder="เพิ่มหมวดหมู่ใหม่ เช่น อุปกรณ์เครือข่าย, คอมพิวเตอร์"
+                  className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 transition-colors"
+                />
+                <button
+                  type="submit"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-5 py-2 rounded-xl transition-all shadow-xs shrink-0"
+                >
+                  + เพิ่มหมวดหมู่
+                </button>
+              </form>
 
-                  <form onSubmit={handleAddCategory} className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                      placeholder="เช่น อุปกรณ์เครือข่าย, ระบบรักษาความปลอดภัย"
-                      className="flex-1 px-3 py-1.5 border border-slate-200 rounded-xl text-sm"
-                    />
-                    <button
-                      type="submit"
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-1.5 rounded-xl transition-colors"
-                    >
-                      เพิ่มหมวดหมู่
-                    </button>
-                  </form>
-
-                  <div className="flex flex-wrap gap-1.5 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    {categories.map((c) => (
-                      <span
-                        key={c.id}
-                        className="inline-flex items-center space-x-1 pl-2.5 pr-1.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700"
-                      >
-                        <span>{c.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCategory(c.id)}
-                          className="p-0.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </span>
-                    ))}
-                    {categories.length === 0 && (
-                      <span className="text-xs text-slate-400 font-sans py-1">ไม่มีข้อมูลหมวดหมู่สินค้า</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. Product Type Setup (Subset of Categories) */}
-                <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center space-x-1.5">
-                    <Boxes className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>จัดการประเภทสินค้าย่อย (Product Types Subset)</span>
-                  </h4>
-
-                  <form onSubmit={handleAddType} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xxs font-bold text-slate-500 mb-1">หมวดหมู่หลัก</label>
-                      <select
-                        required
-                        value={newTypeCategoryId}
-                        onChange={(e) => setNewTypeCategoryId(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white"
-                      >
-                        <option value="">-- เลือกหมวดหมู่หลัก --</option>
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xxs font-bold text-slate-500 mb-1">ประเภทสินค้าย่อย</label>
-                      <div className="flex gap-2">
+              <div className="space-y-2 max-h-[400px] overflow-y-auto scrollbar-thin pr-1">
+                {categories.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200/60 rounded-xl text-sm"
+                  >
+                    {editingCategoryId === c.id ? (
+                      <div className="flex items-center gap-2 w-full">
                         <input
                           type="text"
-                          required
-                          value={newType}
-                          onChange={(e) => setNewType(e.target.value)}
-                          placeholder="เช่น Router, Camera IP"
-                          className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                          value={editingCategoryName}
+                          onChange={(e) => setEditingCategoryName(e.target.value)}
+                          className="flex-1 px-2 py-1 text-sm border border-slate-300 rounded-lg outline-none focus:border-indigo-500"
                         />
                         <button
-                          type="submit"
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shrink-0"
+                          onClick={() => handleUpdateCategory(c.id, editingCategoryName)}
+                          className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700"
                         >
-                          เพิ่มประเภท
+                          บันทึก
+                        </button>
+                        <button
+                          onClick={() => setEditingCategoryId(null)}
+                          className="px-2.5 py-1 bg-slate-300 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-400"
+                        >
+                          ยกเลิก
                         </button>
                       </div>
-                    </div>
-                  </form>
-
-                  <div className="max-h-48 overflow-y-auto space-y-1.5 p-3 bg-slate-50 rounded-xl border border-slate-100 scrollbar-thin">
-                    {productTypes.map((t) => {
-                      const parentCat = categories.find(c => c.id === t.categoryId);
-                      return (
-                        <div
-                          key={t.id}
-                          className="flex items-center justify-between p-2.5 bg-white border border-slate-200/60 rounded-xl text-xs hover:border-slate-300 transition-all"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-800">{t.name}</span>
-                            {parentCat && (
-                              <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md font-sans">
-                                {parentCat.name}
-                              </span>
-                            )}
-                          </div>
+                    ) : (
+                      <>
+                        <span className="font-semibold text-slate-700">{c.name}</span>
+                        <div className="flex items-center gap-1.5">
                           <button
-                            type="button"
-                            onClick={() => handleDeleteType(t.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                            title="ลบประเภทสินค้า"
+                            onClick={() => {
+                              setEditingCategoryId(c.id);
+                              setEditingCategoryName(c.name);
+                            }}
+                            className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+                            title="แก้ไขหมวดหมู่"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบหมวดหมู่ "${c.name}"? การลบนี้จะส่งผลต่อการเชื่อมโยงประเภทสินค้าด้วย`)) {
+                                handleDeleteCategory(c.id);
+                              }
+                            }}
+                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="ลบหมวดหมู่"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                      );
-                    })}
-                    {productTypes.length === 0 && (
-                      <div className="text-center text-xs text-slate-400 font-sans py-4">ไม่มีข้อมูลประเภทสินค้า</div>
+                      </>
                     )}
                   </div>
+                ))}
+                {categories.length === 0 && (
+                  <div className="text-center py-8 text-xs text-slate-400 font-sans">ไม่มีข้อมูลหมวดหมู่สินค้าหลัก</div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Box: Product Types (Sub-types) */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Boxes className="w-5 h-5 text-indigo-600" />
+                  <span>จัดการประเภทสินค้าย่อย (Product Sub-types)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">ประเภทสเปกย่อยของสินค้าแต่ละหมวดหมู่หลัก</p>
+              </div>
+
+              <form onSubmit={handleAddType} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <select
+                    required
+                    value={newTypeCategoryId}
+                    onChange={(e) => setNewTypeCategoryId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500"
+                  >
+                    <option value="">-- เลือกหมวดหมู่หลัก --</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={newType}
+                    onChange={(e) => setNewType(e.target.value)}
+                    placeholder="เช่น Router, Switch, IP Camera"
+                    className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shrink-0 shadow-xs"
+                  >
+                    + เพิ่มประเภท
+                  </button>
+                </div>
+              </form>
 
-                {/* 3. Distributor Setup */}
-                <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center space-x-1.5">
-                    <Boxes className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>จัดการผู้แทนจำหน่าย (Distributors)</span>
-                  </h4>
+              {/* Category Filter for Sub-types */}
+              <div className="flex items-center justify-between bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                <span className="text-xs font-bold text-slate-600">แสดงตามหมวดหมู่สินค้า:</span>
+                <select
+                  value={subTypeFilterCategory}
+                  onChange={(e) => setSubTypeFilterCategory(e.target.value)}
+                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white outline-none focus:border-indigo-500 font-semibold text-slate-700 shadow-xxs cursor-pointer"
+                >
+                  <option value="">-- แสดงทั้งหมด (แบ่งตามหมวดหมู่) --</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
 
-                  <form onSubmit={handleAddDistributor} className="flex gap-2">
+              <div className="space-y-4 max-h-[450px] overflow-y-auto scrollbar-thin pr-1">
+                {(() => {
+                  // Filter categories based on selection
+                  const filteredCategories = subTypeFilterCategory 
+                    ? categories.filter(c => c.id === subTypeFilterCategory)
+                    : categories;
+
+                  // Find if there are any uncategorized types
+                  const uncategorizedTypes = productTypes.filter(t => !t.categoryId || !categories.some(c => c.id === t.categoryId));
+
+                  // Construct sections to display
+                  const sections: { categoryId: string; categoryName: string; types: typeof productTypes }[] = [];
+
+                  filteredCategories.forEach(c => {
+                    const types = productTypes.filter(t => t.categoryId === c.id);
+                    if (types.length > 0 || subTypeFilterCategory === c.id) {
+                      sections.push({
+                        categoryId: c.id,
+                        categoryName: c.name,
+                        types
+                      });
+                    }
+                  });
+
+                  if (uncategorizedTypes.length > 0 && !subTypeFilterCategory) {
+                    sections.push({
+                      categoryId: 'uncategorized',
+                      categoryName: 'ไม่ระบุหมวดหมู่ / อื่นๆ',
+                      types: uncategorizedTypes
+                    });
+                  }
+
+                  if (sections.length === 0) {
+                    return (
+                      <div className="text-center py-12 text-xs text-slate-400 font-sans italic">
+                        ไม่มีข้อมูลประเภทสินค้าย่อยที่ตรงตามเงื่อนไข
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-6">
+                      {sections.map(section => (
+                        <div key={section.categoryId} className="space-y-2.5">
+                          {/* Section Header */}
+                          <div className="flex items-center gap-2 bg-slate-50/50 p-2 rounded-lg border border-slate-100/50 sticky top-0 z-10 backdrop-blur-xs">
+                            <span className="text-xs font-bold text-indigo-700 font-sans">
+                              📁 {section.categoryName}
+                            </span>
+                            <div className="flex-1 h-px bg-slate-100" />
+                            <span className="text-[10px] font-semibold text-slate-400 font-sans px-1.5 py-0.5 bg-slate-100 rounded-md">
+                              {section.types.length} รายการ
+                            </span>
+                          </div>
+                          
+                          {/* Section Items */}
+                          <div className="space-y-1.5 pl-1.5">
+                            {section.types.map(t => (
+                              <div
+                                key={t.id}
+                                className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200/60 rounded-xl text-sm hover:bg-slate-100/50 transition-colors"
+                              >
+                                {editingTypeId === t.id ? (
+                                  <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
+                                    <select
+                                      value={editingTypeCategoryId}
+                                      onChange={(e) => setEditingTypeCategoryId(e.target.value)}
+                                      className="w-full sm:w-auto px-2 py-1 text-xs border border-slate-300 bg-white rounded-lg outline-none"
+                                    >
+                                      {categories.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      type="text"
+                                      value={editingTypeName}
+                                      onChange={(e) => setEditingTypeName(e.target.value)}
+                                      className="flex-1 w-full px-2 py-1 text-xs border border-slate-300 rounded-lg outline-none"
+                                    />
+                                    <div className="flex gap-1.5 mt-2 sm:mt-0 shrink-0">
+                                      <button
+                                        onClick={() => handleUpdateType(t.id, editingTypeName, editingTypeCategoryId)}
+                                        className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700"
+                                      >
+                                        บันทึก
+                                      </button>
+                                      <button
+                                        onClick={() => setEditingTypeId(null)}
+                                        className="px-2.5 py-1 bg-slate-300 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-400"
+                                      >
+                                        ยกเลิก
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <span className="font-semibold text-slate-700">{t.name}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        onClick={() => {
+                                          setEditingTypeId(t.id);
+                                          setEditingTypeName(t.name);
+                                          setEditingTypeCategoryId(t.categoryId || '');
+                                        }}
+                                        className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+                                        title="แก้ไขประเภทสินค้าย่อย"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบประเภทสินค้าย่อย "${t.name}"?`)) {
+                                            handleDeleteType(t.id);
+                                          }
+                                        }}
+                                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                                        title="ลบประเภทสินค้าย่อย"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                            {section.types.length === 0 && (
+                              <div className="text-center py-6 text-xs text-slate-400 font-sans italic bg-slate-50/30 rounded-xl border border-dashed border-slate-200">
+                                ยังไม่มีประเภทสินค้าย่อยในหมวดหมู่นี้
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* T6: Distributors (ผู้แทนจำหน่าย) */}
+        {activeTab === 'distributors' && (
+          <motion.div
+            key="distributors"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-6"
+          >
+            {/* Header and Add Form */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Briefcase className="w-5 h-5 text-indigo-600" />
+                  <span>จัดการข้อมูลผู้แทนจำหน่าย (Distributor Directory)</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">จัดเก็บข้อมูลบริษัทผู้จัดจำหน่าย เบอร์ติดต่อของเซลส์ และเงื่อนไขการชำระเงินเครดิตสำหรับการซื้อขาย</p>
+              </div>
+
+              <form onSubmit={handleAddDistributor} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100/80">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-600">ชื่อบริษัท / ผู้จัดจำหน่าย *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newDistributor}
+                    onChange={(e) => setNewDistributor(e.target.value)}
+                    placeholder="เช่น Synnex (Thailand) PCL"
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-600">ชื่อเซลส์ผู้ติดต่อ</label>
+                  <input
+                    type="text"
+                    value={newDistSalesName}
+                    onChange={(e) => setNewDistSalesName(e.target.value)}
+                    placeholder="เช่น คุณสมศักดิ์ รักดี"
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-600">เบอร์โทรติดต่อ</label>
+                  <input
+                    type="text"
+                    value={newDistPhone}
+                    onChange={(e) => setNewDistPhone(e.target.value)}
+                    placeholder="เช่น 02-123-4567, 081-234-5678"
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-600">เงื่อนไขชำระเงิน (Credit Term)</label>
+                  <div className="flex gap-2">
                     <input
                       type="text"
-                      required
-                      value={newDistributor}
-                      onChange={(e) => setNewDistributor(e.target.value)}
-                      placeholder="เช่น Ingram Micro, Cisco Systems"
-                      className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                      value={newDistPaymentTerms}
+                      onChange={(e) => setNewDistPaymentTerms(e.target.value)}
+                      placeholder="เช่น เครดิต 30 วัน, เงินสด"
+                      className="flex-1 min-w-0 px-3.5 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 bg-white"
                     />
                     <button
                       type="submit"
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shrink-0"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shrink-0 shadow-sm"
                     >
-                      เพิ่มตัวแทน
+                      + เพิ่มผู้แทน
                     </button>
-                  </form>
-
-                  <div className="max-h-48 overflow-y-auto space-y-1.5 p-3 bg-slate-50 rounded-xl border border-slate-100 scrollbar-thin">
-                    {distributors.map((d) => (
-                      <div
-                        key={d.id}
-                        className="flex items-center justify-between p-2.5 bg-white border border-slate-200/60 rounded-xl text-xs hover:border-slate-300 transition-all"
-                      >
-                        <span className="font-bold text-slate-800">{d.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDistributor(d.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="ลบตัวแทนจำหน่าย"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                    {distributors.length === 0 && (
-                      <div className="text-center text-xs text-slate-400 font-sans py-4">ไม่มีผู้จำหน่ายบันทึกไว้</div>
-                    )}
                   </div>
                 </div>
-              </div>
+              </form>
+            </div>
 
-              <div className="p-4 bg-slate-50 text-right border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowConfigModal(false)}
-                  className="bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs px-5 py-2 rounded-xl transition-colors"
-                >
-                  เสร็จสิ้น / ปิดหน้าต่าง
-                </button>
+            {/* List and Table Grid */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="p-4 bg-slate-50/50 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500">รายชื่อผู้แทนจำหน่ายทั้งหมด ({distributors.length} รายการ)</span>
               </div>
-            </motion.div>
-          </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/30 text-xxs font-black text-slate-500 uppercase tracking-wider border-b border-slate-100">
+                      <th className="py-3 px-6">ชื่อบริษัท / ผู้แทนจำหน่าย</th>
+                      <th className="py-3 px-6">ชื่อเซลส์ที่ติดต่อ</th>
+                      <th className="py-3 px-6">เบอร์โทรติดต่อ</th>
+                      <th className="py-3 px-6">เงื่อนไขการชำระเงิน</th>
+                      <th className="py-3 px-6 text-center">จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {distributors.map((d) => (
+                      <tr
+                        key={d.id}
+                        className="border-b border-slate-100 hover:bg-slate-50/40 text-xs text-slate-700 transition-colors"
+                      >
+                        {editingDistributorId === d.id ? (
+                          <>
+                            <td className="py-3 px-6">
+                              <input
+                                type="text"
+                                value={editingDistName}
+                                onChange={(e) => setEditingDistName(e.target.value)}
+                                className="w-full px-2 py-1 text-xs border border-slate-300 rounded-lg outline-none"
+                              />
+                            </td>
+                            <td className="py-3 px-6">
+                              <input
+                                type="text"
+                                value={editingDistSales}
+                                onChange={(e) => setEditingDistSales(e.target.value)}
+                                className="w-full px-2 py-1 text-xs border border-slate-300 rounded-lg outline-none"
+                              />
+                            </td>
+                            <td className="py-3 px-6">
+                              <input
+                                type="text"
+                                value={editingDistPhone}
+                                onChange={(e) => setEditingDistPhone(e.target.value)}
+                                className="w-full px-2 py-1 text-xs border border-slate-300 rounded-lg outline-none"
+                              />
+                            </td>
+                            <td className="py-3 px-6">
+                              <input
+                                type="text"
+                                value={editingDistPayment}
+                                onChange={(e) => setEditingDistPayment(e.target.value)}
+                                className="w-full px-2 py-1 text-xs border border-slate-300 rounded-lg outline-none"
+                              />
+                            </td>
+                            <td className="py-3 px-6 text-center">
+                              <div className="flex justify-center gap-1.5">
+                                <button
+                                  onClick={() => handleUpdateDistributor(d.id, editingDistName, editingDistSales, editingDistPhone, editingDistPayment)}
+                                  className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700"
+                                >
+                                  บันทึก
+                                </button>
+                                <button
+                                  onClick={() => setEditingDistributorId(null)}
+                                  className="px-2.5 py-1 bg-slate-300 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-400"
+                                >
+                                  ยกเลิก
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="py-3.5 px-6 font-semibold text-slate-800">{d.name}</td>
+                            <td className="py-3.5 px-6 text-slate-600">{d.salesName || '-'}</td>
+                            <td className="py-3.5 px-6 text-slate-600 font-mono">{d.phone || '-'}</td>
+                            <td className="py-3.5 px-6 text-slate-600">
+                              {d.paymentTerms ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-100/60 font-semibold font-sans">
+                                  {d.paymentTerms}
+                                </span>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="py-3.5 px-6 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingDistributorId(d.id);
+                                    setEditingDistName(d.name);
+                                    setEditingDistSales(d.salesName || '');
+                                    setEditingDistPhone(d.phone || '');
+                                    setEditingDistPayment(d.paymentTerms || '');
+                                  }}
+                                  className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+                                  title="แก้ไขข้อมูลผู้แทนจำหน่าย"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบผู้จัดจำหน่าย "${d.name}"?`)) {
+                                      handleDeleteDistributor(d.id);
+                                    }
+                                  }}
+                                  className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                                  title="ลบผู้จัดจำหน่าย"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                    {distributors.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-xs text-slate-400 font-sans">
+                          ไม่มีข้อมูลผู้จัดจำหน่ายที่จัดเก็บไว้ในระบบ
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </motion.div>
         )}
-      </AnimatePresence>
 
       {/* Barcode Scanner Overlay */}
       {isScannerOpen && (

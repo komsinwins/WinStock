@@ -38,13 +38,14 @@ service cloud.firestore {
 
     function isValidProductType(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() <= 100
-        && (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() <= 100))
-        && (!('details' in data) || (data.details is string && data.details.size() <= 1000));
+        && (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() <= 100));
     }
 
     function isValidDistributor(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() <= 100
-        && (!('details' in data) || (data.details is string && data.details.size() <= 1000));
+        && (!('salesName' in data) || (data.salesName is string && data.salesName.size() <= 200))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 100))
+        && (!('paymentTerms' in data) || (data.paymentTerms is string && data.paymentTerms.size() <= 200));
     }
 
     function isValidStockInItem(data) {
@@ -120,21 +121,21 @@ service cloud.firestore {
     match /categories/{categoryId} {
       allow read: if true;
       allow create: if isValidId(categoryId) && isValidCategory(incoming());
-      allow update: if false;
+      allow update: if isValidId(categoryId) && isValidCategory(incoming());
       allow delete: if isValidId(categoryId);
     }
 
     match /productTypes/{typeId} {
       allow read: if true;
       allow create: if isValidId(typeId) && isValidProductType(incoming());
-      allow update: if false;
+      allow update: if isValidId(typeId) && isValidProductType(incoming());
       allow delete: if isValidId(typeId);
     }
 
     match /distributors/{distId} {
       allow read: if true;
       allow create: if isValidId(distId) && isValidDistributor(incoming());
-      allow update: if false;
+      allow update: if isValidId(distId) && isValidDistributor(incoming());
       allow delete: if isValidId(distId);
     }
 
